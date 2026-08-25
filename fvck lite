@@ -1,0 +1,174 @@
+# :::::::::::::: FVCK LITE GHOST CLIENT ::::::::::::::
+import time, random, ctypes, threading, os, sys
+import tkinter as tk
+from tkinter import ttk
+
+LONG, DWORD = ctypes.c_long, ctypes.c_ulong
+ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
+
+class MOUSEINPUT(ctypes.Structure):
+    _fields_ = [("dx", LONG), ("dy", LONG), ("mouseData", DWORD), 
+                ("dwFlags", DWORD), ("time", DWORD), ("dwExtraInfo", ULONG_PTR)]
+
+class INPUT(ctypes.Structure):
+    class _INPUT(ctypes.Union): _fields_ = [("mi", MOUSEINPUT)]
+    _anonymous_ = ("type",)
+    _fields_ = [("type", DWORD), ("union", _INPUT)]
+
+INPUT_MOUSE = 0
+MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP = 0x0002, 0x0004
+VK_LBUTTON = 0x01
+VK_RETURN, VK_SLASH = 0x0D, 0xBF
+
+# Variables del cliente
+activo, cps = False, 12
+modo_jitter = False
+chat_abierto = False
+tecla_virtual = 0x06  # Botón 5 del Mouse por defecto
+
+MAPEO_BINDS = {
+    'Mouse 5 (Pulgar)': 0x06,
+    'Mouse 4 (Pulgar)': 0x05,
+    'Tecla X': 0x58,
+    'Tecla Z': 0x5A,
+    'Tecla C': 0x43,
+    'Tecla F': 0x46,
+    'Tecla V': 0x56
+}
+
+def clic_hardware_lunar():
+    click_down = INPUT(type=INPUT_MOUSE, mi=MOUSEINPUT(dx=0, dy=0, mouseData=0, dwFlags=MOUSEEVENTF_LEFTDOWN, time=0, dwExtraInfo=0))
+    click_up = INPUT(type=INPUT_MOUSE, mi=MOUSEINPUT(dx=0, dy=0, mouseData=0, dwFlags=MOUSEEVENTF_LEFTUP, time=0, dwExtraInfo=0))
+    ctypes.windll.user32.SendInput(1, ctypes.pointer(click_down), ctypes.sizeof(click_down))
+    time.sleep(random.uniform(0.008, 0.018)) 
+    ctypes.windll.user32.SendInput(1, ctypes.pointer(click_up), ctypes.sizeof(click_up))
+
+def actualizar_ui():
+    if chat_abierto:
+        lbl_status.config(text="STATUS: CHAT PAUSE", fg="#ffaa00")
+    elif activo:
+        lbl_status.config(text="STATUS: TOGGLED", fg="#00ff66")
+    else:
+        lbl_status.config(text="STATUS: IDLE", fg="#ff3333")
+
+def bucle_principal():
+    global activo, cps, modo_jitter, chat_abierto, tecla_virtual
+    contador = 0
+    while True:
+        # Detectar chat de Minecraft (ENTER o /)
+        if (ctypes.windll.user32.GetAsyncKeyState(VK_RETURN) & 0x8000) or (ctypes.windll.user32.GetAsyncKeyState(VK_SLASH) & 0x8000):
+            chat_abierto = not chat_abierto
+            raiz.after(0, actualizar_ui)
+            time.sleep(0.25)
+
+        # Escuchar bind de toggle
+        if ctypes.windll.user32.GetAsyncKeyState(tecla_virtual) & 0x8000:
+            if not chat_abierto:
+                activo = not activo
+                raiz.after(0, actualizar_ui)
+                time.sleep(0.25)
+
+        if activo and not chat_abierto:
+            if ctypes.windll.user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000:
+                contador += 1
+                if random.random() > 0.02: 
+                    clic_hardware_lunar()
+                
+                tiempo_base = max(0.004, (1.0 / cps) - 0.014)
+                
+                if modo_jitter:
+                    fluctuacion = random.uniform(-0.028, 0.028) if contador % 3 == 0 else random.uniform(-0.005, 0.005)
+                else:
+                    fluctuacion = random.uniform(-0.008, 0.008) 
+                
+                if contador % random.randint(12, 28) == 0:
+                    tiempo_base += random.uniform(0.020, 0.040) 
+                
+                time.sleep(max(0.001, tiempo_base + fluctuacion))
+            else:
+                contador = 0
+                time.sleep(0.01)
+        else:
+            time.sleep(0.02)
+
+def cambiar_cps(val):
+    global cps
+    cps = int(float(val))
+    lbl_cps_val.config(text=f"{cps} CPS")
+
+def alternar_jitter():
+    global modo_jitter
+    modo_jitter = var_jitter.get()
+
+def cambiar_bind(event):
+    global tecla_virtual
+    seleccion = combo_bind.get()
+    if seleccion in MAPEO_BINDS:
+        tecla_virtual = MAPEO_BINDS[seleccion]
+
+def auto_destruccion():
+    global activo
+    activo = False
+    raiz.destroy()
+    try:
+        ruta_archivo = sys.argv[0]
+        os.remove(ruta_archivo)
+    except Exception:
+        pass
+    sys.exit()
+
+# --- DISEÑO DARK MODERNO ---
+raiz = tk.Tk()
+raiz.title("Fvck Lite v1.0")
+raiz.geometry("340x360")
+raiz.configure(bg="#111111")
+raiz.resizable(False, False)
+
+lbl_logo = tk.Label(raiz, text="FVCK LITE", font=("Impact", 24), bg="#111111", fg="#00ff66")
+lbl_logo.pack(pady=10)
+
+lbl_sub = tk.Label(raiz, text="Ghost Client Framework - Minecraft 1.8", font=("Arial", 8, "italic"), bg="#111111", fg="#555555")
+lbl_sub.pack()
+
+lbl_cps_val = tk.Label(raiz, text="12 CPS", font=("Arial", 14, "bold"), bg="#111111", fg="#ffffff")
+lbl_cps_val.pack(pady=5)
+
+barra = ttk.Scale(raiz, from_=12, to=21, orient="horizontal", command=cambiar_cps)
+barra.set(12)
+barra.pack(padx=40, fill="x")
+
+var_jitter = tk.BooleanVar()
+chk_jitter = tk.Checkbutton(
+    raiz, text="Habilitar Simulación Jitter Mode", 
+    variable=var_jitter, command=alternar_jitter, 
+    bg="#111111", fg="#ffffff", selectcolor="#222222", 
+    activebackground="#111111", activeforeground="#ffffff"
+)
+chk_jitter.pack(pady=10)
+
+frame_key = tk.Frame(raiz, bg="#111111")
+frame_key.pack(pady=5)
+
+lbl_bind = tk.Label(frame_key, text="Keybind:", bg="#111111", fg="#ffffff")
+lbl_bind.pack(side="left", padx=5)
+
+combo_bind = ttk.Combobox(frame_key, values=list(MAPEO_BINDS.keys()), state="readonly", width=18)
+combo_bind.set("Mouse 5 (Pulgar)")
+combo_bind.bind("<<ComboboxSelected>>", cambiar_bind)
+combo_bind.pack(side="left")
+
+lbl_status = tk.Label(raiz, text="STATUS: IDLE", font=("Arial", 11, "bold"), bg="#111111", fg="#ff3333")
+lbl_status.pack(pady=10)
+
+# Botón corregido (se removió 'padding=6' incompatible con tk.Button)
+btn_destruct = tk.Button(
+    raiz, text="SELF-DESTRUCT", command=auto_destruccion, 
+    bg="#ff1133", fg="#ffffff", font=("Arial", 9, "bold"), 
+    bd=0, activebackground="#aa0011", pady=6
+)
+btn_destruct.pack(pady=10, fill="x", padx=40)
+
+hilo = threading.Thread(target=bucle_principal, daemon=True)
+hilo.start()
+
+raiz.mainloop()
